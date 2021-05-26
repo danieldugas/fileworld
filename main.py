@@ -6,12 +6,13 @@ from direct.showbase.ShowBase import ShowBase
 from direct.task import Task
 from direct.actor.Actor import Actor
 from direct.interval.IntervalGlobal import Sequence
-from panda3d.core import Point3
+from panda3d.core import Point3, AmbientLight
 
 from pandac.PandaModules import WindowProperties, CompassEffect
 # import direct.directbase.DirectStart
 # from direct.task import Task
 
+default_base_player_speed = 1 # the subjective speed from the player
 
 class MyApp(ShowBase):
     def __init__(self):
@@ -19,6 +20,7 @@ class MyApp(ShowBase):
         self.current_folder = ["home", "daniel"]
 
         self.god_mode = True # DEBUG
+        self.base_player_speed = default_base_player_speed
 
         ShowBase.__init__(self)
 
@@ -76,6 +78,12 @@ class MyApp(ShowBase):
         def stopRight():
             self.right_flag = False
 
+        def boost():
+            self.base_player_speed *= 10
+
+        def unboost():
+            self.base_player_speed *= 0.1
+
         self.accept("mouse3", forward)
         self.accept("mouse3-up", forward)
         self.accept("w", forward)
@@ -87,6 +95,8 @@ class MyApp(ShowBase):
         self.accept("d", right)
         self.accept("d-up", stopRight)
         self.accept("escape", sys.exit)
+        self.accept("lshift", boost)
+        self.accept("lcontrol", unboost)
 
         # Disable the camera trackball controls.
 #         self.disableMouse()
@@ -100,12 +110,17 @@ class MyApp(ShowBase):
         self.scene.setScale(0.25, 0.25, 0.25)
         self.scene.setPos(-8, 42, 0)
 
-        self.scene2 = self.loader.loadModel("models/environment")
+        self.scene2 = self.loader.loadModel("/home/daniel/Code/fileworld/house.bam")
         # Reparent the model to render.
         self.scene2.reparentTo(self.render)
         # Apply scale and position transforms on the model.
-        self.scene2.setScale(0.01, 0.01, 0.01)
-        self.scene2.setPos(-8, 42, 0)
+        self.scene2.setScale(1., 1., 1.)
+        self.scene2.setPos(0, 0, 0)
+        ambientLight = AmbientLight('ambientLight')
+        ambientLight.setColor((0.3, 0.3, 0.3, 1))
+        ambientLightNP = self.render.attachNewNode(ambientLight)
+        self.render.setLight(ambientLightNP)
+        self.render.set_shader_auto()
 
         # Add the spinCameraTask procedure to the task manager.
 #         self.taskMgr.add(self.spinCameraTask, "SpinCameraTask")
@@ -149,8 +164,7 @@ class MyApp(ShowBase):
         return scale
 
     def getPlayerSpeed(self):
-        base_player_speed = 1
-        return base_player_speed * self.getPlayerScale()
+        return self.base_player_speed * self.getPlayerScale()
 
     # camera rotation task
     def cameraTask(self, task):
