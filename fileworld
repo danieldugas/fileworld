@@ -188,6 +188,15 @@ class FPS(object):
             text3d.setScale(-1,1,1)
             text3d.setPos(0,11,5)
             text3d.setTwoSided(True)
+            #grandparent (for distant vision)
+#             grandparent_node = loader.loadModel('house.bam')
+#             grandparent_node.reparentTo(self.parent_room_node)
+#             grandparent_node.setPos(0, 100, -1)
+#             grandparent_node.setScale(20, 20, 20)
+#             grandparent_node.setH(90)
+#             grandcousin_node = loader.loadModel('house.bam')
+#             grandcousin_node.reparentTo(grandparent_node)
+#             grandcousin_node.setScale(0.05, 0.05, 0.05)
 
         # child room scenes, smaller
         self.children_scale = 0.1
@@ -474,7 +483,7 @@ class Player(object):
         base.accept( "a-up" , self.__setattr__,["strafe",self.STOP] )
         base.accept( "d-up" , self.__setattr__,["strafe",self.STOP] )
         base.accept( "lshift-up" , self.__setattr__,["boost",1] )
-        base.accept( "lshift" , self.__setattr__,["boost",2] )
+        base.accept( "lshift" , self.__setattr__,["boost",10] )
 
     def mouseUpdate(self):
         """ this task updates the mouse """
