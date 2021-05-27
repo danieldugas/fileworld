@@ -131,7 +131,6 @@ class FPS(object):
         for c, v in self.children_room_nodes.items():
             v.removeNode()
 
-
         # sibling room scenes (children of parent)
         # current room is one of those (I am the child of my parents)
         self.parent_scale = 1. / DEFAULT_CHILD_SCALE
@@ -166,11 +165,14 @@ class FPS(object):
         if len(self.current_folder) == 1:
             # can't create parent, as there is nothing above '/'
             z_offset = - floorraise
-            self.parent_room_node = loader.loadModel('models/environment')
-            self.parent_room_node.reparentTo(render)
+            dummy_grass_node = render.attachNewNode("Dummy Grass Node")
+            grass_node = loader.loadModel('models/environment')
+            grass_node.reparentTo(dummy_grass_node)
+            grass_node.setPos(0, 0, -1)
+            self.parent_room_node = dummy_grass_node
             self.parent_room_node.setTwoSided(True)
             self.parent_room_node.setScale(self.parent_scale, self.parent_scale, self.parent_scale)
-            self.parent_room_node.setPos(0, 0, z_offset - 1)
+            self.parent_room_node.setPos(0, 0, z_offset)
         else:
             c = self.current_folder[-2]
             z_offset = - floorraise
@@ -337,7 +339,8 @@ class FPS(object):
             if t >= T:
                 # current room is always at 0, but it's at some xy in parent. When we grow,
                 # we'll need to move player to that xy
-                self.player.node.setPos(t_player_pos[0] - parent_xy[0] * s, t_player_pos[1] - parent_xy[1] * s, t0_player_pos[2])
+                t_player_pos = t0_player_pos * sT
+                self.player.node.setPos(t_player_pos[0] - parent_xy[0] * sT, t_player_pos[1] - parent_xy[1] * sT, t0_player_pos[2])
                 self.in_cutscene = None
                 self.current_folder.pop(-1)
                 self.regen_scenes_for_current_folder()
@@ -377,8 +380,9 @@ class FPS(object):
             t += globalClock.getDt()
             self.in_cutscene["t"] = t
             if t >= T:
+                t_player_pos = t0_player_pos * sT
                 # next room is at some xy in parent, but it's at 0 after shrinkage.
-                self.player.node.setPos(t_player_pos[0] - child_xy[0] * s, t_player_pos[1] - child_xy[1] * s, t0_player_pos[2])
+                self.player.node.setPos(t_player_pos[0] - child_xy[0] * sT, t_player_pos[1] - child_xy[1] * sT, t0_player_pos[2])
                 self.current_folder.append(to_enter)
                 self.in_cutscene = None
                 self.regen_scenes_for_current_folder()
