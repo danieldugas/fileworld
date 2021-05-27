@@ -4,6 +4,7 @@ space - jump
 mouse - look around
 """
 import numpy as np
+import os
 
 import direct.directbase.DirectStart
 from pandac.PandaModules import *
@@ -11,6 +12,7 @@ from direct.gui.OnscreenText import OnscreenText
 import sys
 
 floorraise = 0.01 # step every smaller scene up by a tiny amount to make floors separate
+x_separation = 50
 scale_level_of_1m_world = 3
 
 def scene_scale_from_scale_level(scale_level):
@@ -31,12 +33,13 @@ class FPS(object):
     """
     def __init__(self):
         """ create a FPS type game """
-        self.initCollision()
-        self.loadLevel()
-        self.initPlayer()
+        self.current_folder = ['/', 'home', 'daniel']
+        self.init_collision()
+        self.load_level()
+        self.init_player()
         base.accept( "escape" , sys.exit)
-        base.accept( "arrow_up" , self.scalePlayerUp)
-        base.accept( "arrow_down" , self.scalePlayerDown)
+        base.accept( "arrow_up" , self.scale_player_up)
+        base.accept( "arrow_down" , self.scale_player_down)
         base.disableMouse()
 
         # hide mouse cursor, comment these 3 lines to see the cursor
@@ -49,12 +52,12 @@ class FPS(object):
         OnscreenText(text=__doc__, style=1, fg=(1,1,1,1),
             pos=(-1.3, 0.95), align=TextNode.ALeft, scale = .05)
 
-    def initCollision(self):
+    def init_collision(self):
         """ create the collision system """
         base.cTrav = CollisionTraverser()
         base.pusher = CollisionHandlerPusher()
 
-    def loadLevel(self):
+    def load_level(self):
         """ load the self.level
             must have
             <Group> *something* {
@@ -63,36 +66,75 @@ class FPS(object):
         """
         self.scenes = [None for i in range(20)]
 
-        # Bigger scenes
-        for i in range(1, 4):
-            scale_level = scale_level_of_1m_world - i
-            if scale_level < 0:
-                continue
-            scene_scale = scene_scale_from_scale_level(scale_level)
-            self.scenes[scale_level] = loader.loadModel('house.bam')
-            self.scenes[scale_level].reparentTo(render)
-            self.scenes[scale_level].setTwoSided(True)
-            self.scenes[scale_level].setScale(scene_scale, scene_scale, scene_scale)
-            self.scenes[scale_level].setPos(0, 0, floorz_from_scale_level(scale_level))
 
-        # 1m scene
-        scale_level = scale_level_of_1m_world
-        scene_scale = scene_scale_from_scale_level(scale_level)
-        self.scenes[scale_level] = loader.loadModel('house.bam')
-        self.scenes[scale_level].reparentTo(render)
-        self.scenes[scale_level].setTwoSided(True)
-        self.scenes[scale_level].setScale(scene_scale, scene_scale, scene_scale)
-        self.scenes[scale_level].setPos(0, 0, floorz_from_scale_level(scale_level))
+        self.parent_scale = 10.
+        self.siblings_scale = 1.
+        self.children_scale = 0.1
 
-        # Smaller scenes
-        for i in range(1, 4):
-            scale_level = scale_level_of_1m_world + i
-            scene_scale = scene_scale_from_scale_level(scale_level)
-            self.scenes[scale_level] = loader.loadModel('house.bam')
-            self.scenes[scale_level].reparentTo(render)
-            self.scenes[scale_level].setTwoSided(True)
-            self.scenes[scale_level].setScale(scene_scale, scene_scale, scene_scale)
-            self.scenes[scale_level].setPos(0, 0, floorz_from_scale_level(scale_level))
+        # parent room scene, larger
+        c = self.current_folder[-2]
+        scale = self.parent_scale
+        z_offset = - floorraise
+        self.parent_room_scene = loader.loadModel('house.bam')
+        self.parent_room_scene.reparentTo(render)
+        self.parent_room_scene.setTwoSided(True)
+        self.parent_room_scene.setScale(scale, scale, scale)
+        self.parent_room_scene.setPos(0, 0, z_offset)
+        text = TextNode(c)
+        text.setText(c)
+        text3d = NodePath(text)
+        text3d.reparentTo(self.parent_room_scene)
+        text3d.setScale(-1,1,1)
+        text3d.setPos(0,11,5)
+        text3d.setTwoSided(True)
+
+        # sibling room scenes (children of parent)
+        # current room is one of those (I am the child of my parents)
+
+        parentdir = '/'.join(self.current_folder[:-1])
+        siblingdirs = [f.name for f in os.scandir(parentdir) if f.is_dir()]
+        siblings = siblingdirs[:3]
+        if len(siblings) >= 2 and self.current_folder[-1] not in siblings:
+            siblings[1] = self.current_folder[-1]
+        self.siblings_room_scenes = {c: None for c in siblings}
+        for i, c in enumerate(siblings):
+            scale = self.siblings_scale
+            z_offset = 0
+            x_separation_index = i - len(siblings) // 2
+            self.siblings_room_scenes[c] = loader.loadModel('house.bam')
+            self.siblings_room_scenes[c].reparentTo(render)
+            self.siblings_room_scenes[c].setTwoSided(True)
+            self.siblings_room_scenes[c].setScale(scale, scale, scale)
+            self.siblings_room_scenes[c].setPos(scale * x_separation* x_separation_index, 0, z_offset)
+            text = TextNode(c)
+            text.setText(c)
+            text3d = NodePath(text)
+            text3d.reparentTo(self.siblings_room_scenes[c])
+            text3d.setScale(-1,1,1)
+            text3d.setPos(0,11,5)
+            text3d.setTwoSided(True)
+
+        # child room scenes, smaller
+        currentdir = '/'.join(self.current_folder)
+        childrendir = [f.name for f in os.scandir(currentdir) if f.is_dir()]
+        children = childrendir[:3]
+        self.children_room_scenes = {c: None for c in children}
+        for i, c in enumerate(children):
+            scale = self.children_scale
+            z_offset = + floorraise
+            x_separation_index = i - len(children) // 2
+            self.children_room_scenes[c] = loader.loadModel('house.bam')
+            self.children_room_scenes[c].reparentTo(render)
+            self.children_room_scenes[c].setTwoSided(True)
+            self.children_room_scenes[c].setScale(scale, scale, scale)
+            self.children_room_scenes[c].setPos(scale * x_separation* x_separation_index, 0, z_offset)
+            text = TextNode(c)
+            text.setText(c)
+            text3d = NodePath(text)
+            text3d.reparentTo(self.children_room_scenes[c])
+            text3d.setScale(-1,1,1)
+            text3d.setPos(0,11,5)
+            text3d.setTwoSided(True)
 
 
         ambientLight = AmbientLight('ambientLight')
@@ -108,60 +150,183 @@ class FPS(object):
         render.setLight(ambientLightNP)
         render.set_shader_auto()
 
-    def initPlayer(self):
+    def init_player(self):
         """ loads the player and creates all the controls for him"""
         self.player = Player()
 
-    def getCurrentRoomDepth(self):
+    def get_current_room_depth(self):
         return len(self.current_folder)
 
-    def getPlayerScale(self):
-        depth = self.getCurrentRoomDepth()
-        # player shrinks to one tenth of their size with every level
-        scale = np.power(0.1, depth)
-        return scale
+    def scale_player_down(self):
+        current_room_name = self.current_folder[-1]
+        if len(list(self.children_room_scenes.keys())) >= 2:
+            children_enter_index = list(self.children_room_scenes.keys())[1]
+        else:
+            children_enter_index = list(self.children_room_scenes.keys())[0]
+        scale_anim = np.linspace(1., 10., 10)
+        player_pos = self.player.node.getPos()
+        for s in scale_anim:
+            # parents become grandparents (later disappear)
+            self.parent_room_scene.setScale(self.parent_scale * s, self.parent_scale * s, self.parent_scale * s)
+            # siblings become parents
+            for i, scene in enumerate(self.siblings_room_scenes.values()):
+                z_offset = -floorraise
+                x_separation_index = i - len(self.siblings_room_scenes.values()) // 2
+                scene.setScale(self.siblings_scale * s, self.siblings_scale * s, self.siblings_scale * s)
+                scene.setPos(self.siblings_scale * s * x_separation * x_separation_index, 0, z_offset)
+            # children become siblings
+            for i, scene in enumerate(self.children_room_scenes.values()):
+                z_offset = 0
+                x_separation_index = i - len(self.children_room_scenes.values()) // 2
+                scene.setScale(self.children_scale * s, self.children_scale * s, self.children_scale * s)
+                scene.setPos(self.children_scale * s * x_separation * x_separation_index, 0, z_offset)
+            # scale player position in world
+            self.player.node.setPos(player_pos * s)
+            import time
+            time.sleep(0.1)
 
-    def getPlayerSpeed(self):
-        return self.base_player_speed * self.getPlayerScale()
+        # delete parent room scene
+        self.parent_room_scene.removeNode()
+        # delete siblings that are now parents
+        for c, v in self.siblings_room_scenes.items():
+            v.removeNode()
 
-    def scalePlayerUp(self):
-        self.player.scale_level -= 1
-        self.player.speed = self.player.speed * 10.
-        self.player.height = self.player.height * 10.
-        self.player.node.setZ(self.player.node.getZ() + self.player.height)
-        self.player.gravity = self.player.gravity * 10.
-        self.player.initialjumpvel = self.player.initialjumpvel * 10.
-        self.player.terminalzvel = self.player.terminalzvel * 10.
-        self.player.lensneardist = self.player.lensneardist * 10.
-        pl =  base.cam.node().getLens()
-        pl.setFov(70)
-        pl.setNear(self.player.lensneardist)
-        base.cam.node().setLens(pl)
+        # create parent
+        c = current_room_name
+        z_offset = - floorraise
+        self.parent_room_scene = loader.loadModel('house.bam')
+        self.parent_room_scene.reparentTo(render)
+        self.parent_room_scene.setTwoSided(True)
+        self.parent_room_scene.setScale(self.parent_scale, self.parent_scale, self.parent_scale)
+        self.parent_room_scene.setPos(0, 0, z_offset)
+        text = TextNode(c)
+        text.setText(c)
+        text3d = NodePath(text)
+        text3d.reparentTo(self.parent_room_scene)
+        text3d.setScale(-1,1,1)
+        text3d.setPos(0,11,5)
+        text3d.setTwoSided(True)
 
-        self.scaletext.setText("Scale level: {}".format(self.player.scale_level))
+        # siblings are parents
+        self.siblings_room_scenes = self.children_room_scenes
+        self.current_folder.append(children_enter_index)
 
-    def scalePlayerDown(self):
-        self.player.scale_level += 1
-        self.player.speed = self.player.speed / 10.
-        self.player.height = self.player.height / 10.
-        self.player.gravity = self.player.gravity / 10.
-        self.player.node.setZ(self.player.node.getZ() - self.player.height * 8)
-        self.player.initialjumpvel = self.player.initialjumpvel / 10.
-        self.player.terminalzvel = self.player.terminalzvel / 10.
-        self.player.lensneardist = self.player.lensneardist / 10.
-        pl =  base.cam.node().getLens()
-        pl.setFov(70)
-        pl.setNear(self.player.lensneardist)
-        base.cam.node().setLens(pl)
+        currentdir = '/'.join(self.current_folder)
+        childrendir = [f.name for f in os.scandir(currentdir) if f.is_dir()]
+        children = childrendir[:3]
+        self.children_room_scenes = {c: None for c in children}
+        for i, c in enumerate(children):
+            scale = self.children_scale
+            z_offset = + floorraise
+            x_separation_index = i - len(children) // 2
+            self.children_room_scenes[c] = loader.loadModel('house.bam')
+            self.children_room_scenes[c].reparentTo(render)
+            self.children_room_scenes[c].setTwoSided(True)
+            self.children_room_scenes[c].setScale(scale, scale, scale)
+            self.children_room_scenes[c].setPos(self.children_scale * x_separation* x_separation_index, 0, z_offset)
+            text = TextNode(c)
+            text.setText(c)
+            text3d = NodePath(text)
+            text3d.reparentTo(self.children_room_scenes[c])
+            text3d.setScale(-1,1,1)
+            text3d.setPos(0,11,5)
+            text3d.setTwoSided(True)
 
-        self.scaletext.setText("Scale level: {}".format(self.player.scale_level))
+
+        self.scaletext.setText('/'.join(self.current_folder)[1:])
+
+    def scale_player_up(self):
+        if len(self.current_folder) == 1:
+            return
+        current_room_name = self.current_folder[-1]
+        parent_room_name = self.current_folder[-2]
+        if len(self.current_folder) == 2:
+            grandparent_room_name = None
+        else:
+            grandparent_room_name = self.current_folder[-3]
+        scale_anim = np.linspace(1., 0.1, 10)
+        player_pos = self.player.node.getPos()
+        for s in scale_anim:
+            # parents shrink to one of siblings (later add siblings)
+            self.parent_room_scene.setScale(self.parent_scale * s, self.parent_scale * s, self.parent_scale * s)
+            # siblings shrink to children
+            for i, scene in enumerate(self.siblings_room_scenes.values()):
+                z_offset = +floorraise
+                x_separation_index = i - len(self.siblings_room_scenes.values()) // 2
+                scene.setScale(self.siblings_scale * s, self.siblings_scale * s, self.siblings_scale * s)
+                scene.setPos(self.siblings_scale * s * x_separation * x_separation_index, 0, z_offset)
+            # children shrink to grandchildren
+            for i, scene in enumerate(self.children_room_scenes.values()):
+                z_offset = 0
+                x_separation_index = i - len(self.children_room_scenes.values()) // 2
+                scene.setScale(self.children_scale * s, self.children_scale * s, self.children_scale * s)
+                scene.setPos(self.children_scale * s * x_separation * x_separation_index, 0, z_offset)
+            # scale player position in world
+            self.player.node.setPos(player_pos * s)
+            import time
+            time.sleep(0.1)
+
+        # TODO delete children which are now grandchildren
+        for c, v in self.children_room_scenes.items():
+            v.removeNode()
+        # TODO delete parent which is now duplicate sibling
+        self.parent_room_scene.removeNode()
+
+        # TODO create parent
+        if grandparent_room_name is None:
+            # can't create parent, as there is nothing above '/'
+            z_offset = - floorraise
+            self.parent_room_scene = loader.loadModel('models/environment')
+            self.parent_room_scene.reparentTo(render)
+            self.parent_room_scene.setTwoSided(True)
+            self.parent_room_scene.setScale(self.parent_scale, self.parent_scale, self.parent_scale)
+            self.parent_room_scene.setPos(0, 0, z_offset - 1)
+        else:
+            c = grandparent_room_name
+            z_offset = - floorraise
+            self.parent_room_scene = loader.loadModel('house.bam')
+            self.parent_room_scene.reparentTo(render)
+            self.parent_room_scene.setTwoSided(True)
+            self.parent_room_scene.setScale(self.parent_scale, self.parent_scale, self.parent_scale)
+            self.parent_room_scene.setPos(0, 0, z_offset)
+            text = TextNode(c)
+            text.setText(c)
+            text3d = NodePath(text)
+            text3d.reparentTo(self.parent_room_scene)
+            text3d.setScale(-1,1,1)
+            text3d.setPos(0,11,5)
+            text3d.setTwoSided(True)
+
+        self.children_room_scenes = self.siblings_room_scenes
+        self.current_folder.pop(-1)
+
+        # create missing siblings
+        siblings = ['None', parent_room_name, 'None']
+        self.siblings_room_scenes = {c: None for c in siblings}
+        for i, c in enumerate(siblings):
+            scale = self.siblings_scale
+            z_offset = 0
+            x_separation_index = i - len(siblings) // 2
+            self.siblings_room_scenes[c] = loader.loadModel('house.bam')
+            self.siblings_room_scenes[c].reparentTo(render)
+            self.siblings_room_scenes[c].setTwoSided(True)
+            self.siblings_room_scenes[c].setScale(scale, scale, scale)
+            self.siblings_room_scenes[c].setPos(scale * x_separation* x_separation_index, 0, z_offset)
+            text = TextNode(c)
+            text.setText(c)
+            text3d = NodePath(text)
+            text3d.reparentTo(self.siblings_room_scenes[c])
+            text3d.setScale(-1,1,1)
+            text3d.setPos(0,11,5)
+            text3d.setTwoSided(True)
+
+        self.scaletext.setText('/'.join(self.current_folder)[1:])
 
 
 class Player(object):
     """
         Player is the main actor in the fps game
     """
-    scale_level = scale_level_of_1m_world
     speed = 50
     height = 1.8
     initialjumpvel = 5
@@ -193,7 +358,7 @@ class Player(object):
         """ make the nodepath for player """
         self.node = NodePath('player')
         self.node.reparentTo(render)
-        self.node.setPos(0,0,5)
+        self.node.setPos(0,5,5)
         self.node.setScale(.05)
 
     def setUpCamera(self):
@@ -262,7 +427,7 @@ class Player(object):
             z = entry.getSurfacePoint(render).getZ()
             if z > floorZ and entry.getIntoNode().getName() != "player":
                 floorZ = z
-        floorZ = floorz_from_scale_level(self.scale_level)  # don't know why the regular floor method doesn't work
+        floorZ = 0
         floorPadding = self.height * 0.1
         feetZ = self.node.getZ() - self.height
         # feet above padded ground (floating)
@@ -270,7 +435,7 @@ class Player(object):
             # apply gravity
             if self.zvel > self.terminalzvel:
                 self.zvel = self.zvel + self.gravity * globalClock.getDt()
-        # feet below ground -> 
+        # feet below ground ->
         if floorZ > feetZ:
             self.zvel = 0
             self.node.setZ(floorZ+self.height)
