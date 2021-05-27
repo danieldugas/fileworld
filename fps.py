@@ -242,8 +242,10 @@ class FPS(object):
         parent_room_name = self.current_folder[-2]
         if len(self.current_folder) == 2:
             grandparent_room_name = None
+            grandparentdir = None
         else:
             grandparent_room_name = self.current_folder[-3]
+            grandparentdir = '/'.join(self.current_folder[:-2])
         scale_anim = np.linspace(1., 0.1, 10)
         player_pos = self.player.node.getPos()
         for s in scale_anim:
@@ -301,7 +303,13 @@ class FPS(object):
         self.current_folder.pop(-1)
 
         # create missing siblings
-        siblings = ['None', parent_room_name, 'None']
+        if grandparentdir is None:
+            siblings = [parent_room_name]
+        else:
+            siblingdirs = [f.name for f in os.scandir(grandparentdir) if f.is_dir()]
+            siblings = siblingdirs[:3]
+            if len(siblings) >= 2 and parent_room_name not in siblings:
+                siblings[1] = parent_room_name
         self.siblings_room_scenes = {c: None for c in siblings}
         for i, c in enumerate(siblings):
             scale = self.siblings_scale
@@ -337,6 +345,7 @@ class Player(object):
     STOP = Vec3(0)
     walk = STOP
     strafe = STOP
+    boost = 1
     readyToJump = False
     zvel = 0
     terminalzvel = -10
@@ -400,6 +409,8 @@ class Player(object):
         base.accept( "d" , self.__setattr__,["strafe",self.RIGHT] )
         base.accept( "a-up" , self.__setattr__,["strafe",self.STOP] )
         base.accept( "d-up" , self.__setattr__,["strafe",self.STOP] )
+        base.accept( "lshift-up" , self.__setattr__,["boost",1] )
+        base.accept( "lshift" , self.__setattr__,["boost",2] )
 
     def mouseUpdate(self,task):
         """ this task updates the mouse """
@@ -414,7 +425,7 @@ class Player(object):
     def moveUpdate(self,task):
         """ this task makes the player move """
         # move where the keys set it
-        self.node.setPos(self.node,self.walk*globalClock.getDt()*self.speed)
+        self.node.setPos(self.node,self.walk*globalClock.getDt()*self.speed*self.boost)
         self.node.setPos(self.node,self.strafe*globalClock.getDt()*self.speed)
         return task.cont
 
