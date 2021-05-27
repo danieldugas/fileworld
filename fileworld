@@ -8,24 +8,18 @@ import numpy as np
 import os
 
 import direct.directbase.DirectStart
-from pandac.PandaModules import *
+# from pandac.PandaModules import *
+from panda3d.core import Vec3, CollisionTraverser, CollisionHandlerPusher, TextNode, NodePath, AmbientLight, CollisionNode, CollisionRay, BitMask32, CollisionHandlerQueue, WindowProperties
 from direct.gui.OnscreenText import OnscreenText
 import sys
 
 floorraise = 0.01 # step every smaller scene up by a tiny amount to make floors separate
 x_separation = 50
-scale_level_of_1m_world = 3
 
-def scene_scale_from_scale_level(scale_level):
-    """ 0: 1000, 1: 100, 2: 10, 3: 1, 4: 0.1, ... """
-    return np.power(0.1, scale_level-scale_level_of_1m_world)
-
-def floorz_from_scale_level(scale_level):
-    if scale_level < 0:
-        return 0
-    else:
-        scene_scale = scene_scale_from_scale_level(scale_level)
-        return floorz_from_scale_level(scale_level - 1) + scale_level * floorraise * scene_scale
+def as_dir(path_list):
+    dir_ = '/'.join(path_list)
+    dir_ = dir_.replace("//", "/")
+    return dir_
 
 class FPS(object):
     """
@@ -59,6 +53,8 @@ class FPS(object):
 
         # init game loop task
         taskMgr.add(self.game_loop, 'gameloop-task')
+
+        base.run()
 
 
     def init_collision(self):
@@ -105,7 +101,7 @@ class FPS(object):
         if len(self.current_folder) == 1:
             siblings = [self.current_folder[-1]]
         else:
-            parentdir = '/'.join(self.current_folder[:-1])
+            parentdir = as_dir(self.current_folder[:-1])
             siblingdirs = [f.name for f in os.scandir(parentdir) if f.is_dir()]
             siblings = siblingdirs[:3]
             if len(siblings) >= 2 and self.current_folder[-1] not in siblings:
@@ -129,7 +125,7 @@ class FPS(object):
             text3d.setTwoSided(True)
 
         # child room scenes, smaller
-        currentdir = '/'.join(self.current_folder)
+        currentdir = as_dir(self.current_folder)
         childrendir = [f.name for f in os.scandir(currentdir) if f.is_dir()]
         children = childrendir[:3]
         self.children_room_nodes = {c: None for c in children}
@@ -150,7 +146,8 @@ class FPS(object):
             text3d.setPos(0,11,5)
             text3d.setTwoSided(True)
 
-        self.scaletext.setText('/'.join(self.current_folder)[1:])
+        self.scaletext.setText(as_dir(self.current_folder))
+
 
     def load_level(self):
         """ load the self.level
@@ -190,10 +187,17 @@ class FPS(object):
         return len(self.current_folder)
 
     def scale_player_down(self):
+        # pick child
         if len(list(self.children_room_nodes.keys())) >= 2:
             child_to_enter = list(self.children_room_nodes.keys())[1]
         else:
             child_to_enter = list(self.children_room_nodes.keys())[0]
+        # check permission
+        try:
+            os.scandir(as_dir(self.current_folder + [child_to_enter]))
+        except PermissionError as e:
+            print(e)
+            return
         player_pos = self.player.node.getPos()
         self.in_cutscene = {"name": "scale_down", "t0_player_pos": player_pos, "child_to_enter": child_to_enter, "t": 0, "duration": 1}
 
@@ -396,10 +400,9 @@ class Player(object):
             if self.readyToJump:
 #                 self.node.setZ(floorZ+floorPadding)
                 self.zvel = self.initialjumpvel
-        print("{:.2f}, {:.2f}, {:.2f}, {:.2f}, {:.2f}".format(
-            self.node.getZ(), self.height, feetZ, floorZ, self.zvel))
+#         print("{:.2f}, {:.2f}, {:.2f}, {:.2f}, {:.2f}".format(
+#             self.node.getZ(), self.height, feetZ, floorZ, self.zvel))
         # apply velocity
         self.node.setZ(self.node.getZ()+self.zvel*globalClock.getDt())
 
 FPS()
-run()
