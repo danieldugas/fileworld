@@ -49,6 +49,8 @@ def child_index_to_grid(i, n):
     scale for ? is 1/10 * (3-1) / (4-1)
 
     """
+    if i is None:
+        raise ValueError
     scale = DEFAULT_CHILD_SCALE
     if n == 1:
         xy = np.array([0, 0])
@@ -65,13 +67,17 @@ def child_index_to_grid(i, n):
         xy = ij * cell_size_m + grid_origin_m
     return xy, ij, scale
 
-def sibling_index_to_grid(i, n):
+def sibling_index_to_grid(i, ci, n):
     """ siblings have a scale fixed to 1., instead, it is the parent scale that must increase to 
-    satisfy the parent-child scale for siblings """
+    satisfy the parent-child scale for siblings
+    in addition, the current folder must be at 0, 0, which means all siblings have to move to satisfy this
+    """
     xy, ij, child_scale = child_index_to_grid(i, n)
+    cxy, _, _ = child_index_to_grid(ci, n)
     parent_scale = 1. / child_scale
-    xy = xy * parent_scale
-    return xy, ij, parent_scale
+    xy = (xy - cxy) * parent_scale
+    parent_xy = -cxy * parent_scale
+    return xy, ij, parent_scale, parent_xy
 
 class FPS(object):
     """
@@ -133,14 +139,16 @@ class FPS(object):
             siblings = [self.current_folder[-1]]
         else:
             parentdir = as_dir(self.current_folder[:-1])
-            siblingdirs = [f.name for f in os.scandir(parentdir) if f.is_dir()]
+            siblingdirs = sorted([f.name for f in os.scandir(parentdir) if f.is_dir()])
             siblings = siblingdirs
         self.siblings_room_nodes = {c: None for c in siblings}
+        ci = self.get_current_room_sibling_index()
+        parent_xy = [0, 0]
         for i, c in enumerate(siblings):
             self.siblings_scale = DEFAULT_SIBLINGS_SCALE
             scale = DEFAULT_SIBLINGS_SCALE
             z_offset = 0
-            xy, _, self.parent_scale = sibling_index_to_grid(i, len(siblings))
+            xy, _, self.parent_scale, parent_xy = sibling_index_to_grid(i, ci, len(siblings))
             self.siblings_room_nodes[c] = loader.loadModel('house.bam')
             self.siblings_room_nodes[c].reparentTo(render)
             self.siblings_room_nodes[c].setTwoSided(True)
@@ -170,7 +178,7 @@ class FPS(object):
             self.parent_room_node.reparentTo(render)
             self.parent_room_node.setTwoSided(True)
             self.parent_room_node.setScale(self.parent_scale, self.parent_scale, self.parent_scale)
-            self.parent_room_node.setPos(0, 0, z_offset)
+            self.parent_room_node.setPos(parent_xy[0], parent_xy[1], z_offset)
             text = TextNode(c)
             text.setText(c)
             text3d = NodePath(text)
@@ -182,7 +190,7 @@ class FPS(object):
         # child room scenes, smaller
         self.children_scale = 0.1
         currentdir = as_dir(self.current_folder)
-        childrendir = [f.name for f in os.scandir(currentdir) if f.is_dir()]
+        childrendir = sorted([f.name for f in os.scandir(currentdir) if f.is_dir()])
         children = childrendir
         self.children_room_nodes = {c: None for c in children}
         for i, c in enumerate(children):
@@ -227,6 +235,14 @@ class FPS(object):
         self.current_selection = closest
         self.sf_text_node.setText(str(closest))
 
+    def get_current_room_sibling_index(self):
+        ci = None
+        for i, (name, node) in enumerate(self.siblings_room_nodes.items()):
+            if name == self.current_folder[-1]:
+                ci = i
+        if len(self.siblings_room_nodes.items()) != 0 and ci is None:
+            raise ValueError
+        return ci
 
     def load_level(self):
         """ load the self.level
@@ -295,14 +311,17 @@ class FPS(object):
             s0 = 1.
             sT = 1. / self.parent_scale
             s = s0 * (1. - t/T) + sT * t/T
-            # parents shrink to one of siblings (later add siblings)
-            self.parent_room_node.setScale(self.parent_scale * s, self.parent_scale * s, self.parent_scale * s)
             # siblings shrink to children
+            parent_xy = [0, 0]
+            ci = self.get_current_room_sibling_index()
             for i, scene in enumerate(self.siblings_room_nodes.values()):
                 z_offset = +floorraise
-                xy, _, _ = sibling_index_to_grid(i, len(self.siblings_room_nodes.values()))
+                xy, _, _, parent_xy = sibling_index_to_grid(i, ci, len(self.siblings_room_nodes.values()))
                 scene.setScale(self.siblings_scale * s, self.siblings_scale * s, self.siblings_scale * s)
                 scene.setPos(xy[0] * s, xy[1] * s, z_offset)
+            # parents shrink to one of siblings (later add siblings)
+            self.parent_room_node.setScale(self.parent_scale * s, self.parent_scale * s, self.parent_scale * s)
+            self.parent_room_node.setPos(s * parent_xy[0], s * parent_xy[1], 0)
             # children shrink to grandchildren
             for i, scene in enumerate(self.children_room_nodes.values()):
                 z_offset = 0
@@ -316,6 +335,9 @@ class FPS(object):
             t += globalClock.getDt()
             self.in_cutscene["t"] = t
             if t >= T:
+                # current room is always at 0, but it's at some xy in parent. When we grow,
+                # we'll need to move player to that xy
+                self.player.node.setPos(t_player_pos[0] - parent_xy[0] * s, t_player_pos[1] - parent_xy[1] * s, t0_player_pos[2])
                 self.in_cutscene = None
                 self.current_folder.pop(-1)
                 self.regen_scenes_for_current_folder()
@@ -323,33 +345,41 @@ class FPS(object):
         elif self.in_cutscene["name"] == "scale_down":
             # to scale down player, we scale up world
             t0_player_pos = self.in_cutscene["t0_player_pos"]
+            to_enter = self.in_cutscene["child_to_enter"]
             T = self.in_cutscene["duration"]
             t = self.in_cutscene["t"]
             # scale factor (1 to 0.1)
             s0 = 1.
             sT = 1. / self.children_scale
             s = s0 * (1. - t/T) + sT * t/T
-            # parents become grandparents (later disappear)
-            self.parent_room_node.setScale(self.parent_scale * s, self.parent_scale * s, self.parent_scale * s)
             # siblings become parents
+            parent_xy = [0, 0]
+            ci = self.get_current_room_sibling_index()
             for i, scene in enumerate(self.siblings_room_nodes.values()):
                 z_offset = -floorraise
-                xy, _, _ = sibling_index_to_grid(i, len(self.siblings_room_nodes.values()))
+                xy, _, _, parent_xy = sibling_index_to_grid(i, ci, len(self.siblings_room_nodes.values()))
                 scene.setScale(self.siblings_scale * s, self.siblings_scale * s, self.siblings_scale * s)
                 scene.setPos(s * xy[0], s * xy[1], z_offset)
+            # parents become grandparents (later disappear)
+            self.parent_room_node.setScale(self.parent_scale * s, self.parent_scale * s, self.parent_scale * s)
+            self.parent_room_node.setPos(s * parent_xy[0], s * parent_xy[1], 0)
             # children become siblings
-            for i, scene in enumerate(self.children_room_nodes.values()):
+            for i, (name, node) in enumerate(self.children_room_nodes.items()):
                 z_offset = 0
                 xy, _, _ = child_index_to_grid(i, len(self.children_room_nodes.values()))
-                scene.setScale(self.children_scale * s, self.children_scale * s, self.children_scale * s)
-                scene.setPos(s * xy[0], s * xy[1], z_offset)
+                node.setScale(self.children_scale * s, self.children_scale * s, self.children_scale * s)
+                node.setPos(s * xy[0], s * xy[1], z_offset)
+                if name == to_enter:
+                    child_xy = xy
             # scale player position in world
             t_player_pos = t0_player_pos * s
             self.player.node.setPos(t_player_pos[0], t_player_pos[1], t0_player_pos[2])
             t += globalClock.getDt()
             self.in_cutscene["t"] = t
             if t >= T:
-                self.current_folder.append(self.in_cutscene["child_to_enter"])
+                # next room is at some xy in parent, but it's at 0 after shrinkage.
+                self.player.node.setPos(t_player_pos[0] - child_xy[0] * s, t_player_pos[1] - child_xy[1] * s, t0_player_pos[2])
+                self.current_folder.append(to_enter)
                 self.in_cutscene = None
                 self.regen_scenes_for_current_folder()
                 return
