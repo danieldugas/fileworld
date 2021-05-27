@@ -81,21 +81,23 @@ class FPS(object):
     current_folder = ['/', 'home', 'daniel']
     in_cutscene = None
     parent_room_node = None
+    current_selection = None
     siblings_room_nodes = {}
     children_room_nodes = {}
 
     def __init__(self):
         """ create a FPS type game """
         self.init_collision()
-        self.scaletext = OnscreenText(text="Fileworld", style=1, fg=(1,1,1,1),
+        self.cf_text_node = OnscreenText(text="Fileworld", style=1, fg=(1,1,1,1),
                     pos=(1.3,-0.95), align=TextNode.ARight, scale = .07)
+        self.sf_text_node = OnscreenText(text="Fileworld", style=1, fg=(1,1,1,1),
+                    pos=(1.3,-0.85), align=TextNode.ARight, scale = .07)
         OnscreenText(text=__doc__, style=1, fg=(1,1,1,1),
             pos=(-1.3, 0.95), align=TextNode.ALeft, scale = .05)
         self.load_level()
         self.init_player()
         base.accept( "escape" , sys.exit)
-        base.accept( "arrow_up" , self.scale_player_up)
-        base.accept( "arrow_down" , self.scale_player_down)
+        base.accept( "mouse1" , self.enter_current_selection)
         base.disableMouse()
 
         # hide mouse cursor, comment these 3 lines to see the cursor
@@ -200,7 +202,30 @@ class FPS(object):
             text3d.setPos(0,11,5)
             text3d.setTwoSided(True)
 
-        self.scaletext.setText(as_dir(self.current_folder))
+        self.cf_text_node.setText(as_dir(self.current_folder))
+
+    def closestChildUpdate(self):
+        """ highlights the closest child to player """
+        player_pos = self.player.node.getPos()
+        min_dist = 5.
+        closest = None
+        for i, (name, node) in enumerate(self.children_room_nodes.items()):
+            node.clearColorScale()
+            pos = node.getPos()
+            dist = (pos - player_pos).length()
+            if dist <= min_dist:
+                min_dist = dist
+                closest = name
+        self.sf_text_node.setText("")
+        if closest is not None:
+            # highlight closest
+            # TODO
+            self.children_room_nodes[closest].setColorScale(10, 10, 10, 10)
+        else:
+            if len(self.current_folder) > 1:
+                closest = ".."
+        self.current_selection = closest
+        self.sf_text_node.setText(str(closest))
 
 
     def load_level(self):
@@ -237,12 +262,16 @@ class FPS(object):
     def get_current_room_depth(self):
         return len(self.current_folder)
 
-    def scale_player_down(self):
-        # pick child
-        if len(list(self.children_room_nodes.keys())) >= 2:
-            child_to_enter = list(self.children_room_nodes.keys())[1]
+    def enter_current_selection(self):
+        if self.current_selection is None:
+            return
+        elif self.current_selection == "..":
+            self.scale_player_up()
         else:
-            child_to_enter = list(self.children_room_nodes.keys())[0]
+            self.scale_player_down(self.current_selection)
+
+
+    def scale_player_down(self, child_to_enter):
         # check permission
         try:
             os.scandir(as_dir(self.current_folder + [child_to_enter]))
@@ -330,6 +359,7 @@ class FPS(object):
         if self.in_cutscene is None:
             self.player.moveUpdate()
             self.player.jumpUpdate()
+            self.closestChildUpdate()
         else:
             self.cutscene_update()
         return task.cont
