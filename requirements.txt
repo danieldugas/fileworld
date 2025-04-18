@@ -1,0 +1,4 @@
+# tested on python 3.9
+numpy==2.0.2
+Panda3D==1.10.15
+uv==0.6.14
